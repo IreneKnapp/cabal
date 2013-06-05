@@ -98,6 +98,20 @@ module Distribution.PackageDescription (
         benchmarkModules,
         enabledBenchmarks,
 
+        -- ** Frameworks
+        Framework(..),
+        emptyFramework,
+        withFramework,
+        hasFrameworks,
+        frameworkModules,
+        
+        -- ** Apps
+        App(..),
+        emptyApp,
+        withApp,
+        hasApps,
+        appModules,
+        
         -- * Build information
         BuildInfo(..),
         emptyBuildInfo,
@@ -191,6 +205,8 @@ data PackageDescription
         executables    :: [Executable],
         testSuites     :: [TestSuite],
         benchmarks     :: [Benchmark],
+        frameworks     :: [Framework],
+        apps           :: [App],
         dataFiles      :: [FilePath],
         dataDir        :: FilePath,
         extraSrcFiles  :: [FilePath],
@@ -255,6 +271,8 @@ emptyPackageDescription
                       executables  = [],
                       testSuites   = [],
                       benchmarks   = [],
+                      frameworks   = [],
+                      apps         = [],
                       dataFiles    = [],
                       dataDir      = "",
                       extraSrcFiles = [],
@@ -630,6 +648,125 @@ benchmarkType benchmark = case benchmarkInterface benchmark of
   BenchmarkUnsupported benchmarktype -> benchmarktype
 
 -- ---------------------------------------------------------------------------
+-- The Framework type
+
+data Framework = Framework {
+        frameworkExposedModules :: [ModuleName],
+        frameworkName :: String,
+        frameworkModulePath :: FilePath,
+        frameworkInfoPlist :: FilePath,
+        frameworkResourceDirectory :: Maybe FilePath,
+        frameworkXIBs :: [FilePath],
+        frameworkOtherResources :: [FilePath],
+        frameworkBuildInfo  :: BuildInfo
+    }
+    deriving (Show, Read, Eq)
+
+instance Monoid Framework where
+  mempty = Framework {
+    frameworkExposedModules = mempty,
+    frameworkName    = mempty,
+    frameworkModulePath = mempty,
+    frameworkInfoPlist = mempty,
+    frameworkResourceDirectory = mempty,
+    frameworkXIBs = mempty,
+    frameworkOtherResources = mempty,
+    frameworkBuildInfo  = mempty
+  }
+  mframeworkend a b = Framework {
+    frameworkExposedModules = combine exposedModules,
+    frameworkName    = combine' frameworkName,
+    frameworkModulePath = combine frameworkModulePath,
+    frameworkInfoPlist = combine frameworkInfoPlist,
+    frameworkResourceDirectory = combine frameworkResourceDirectory,
+    frameworkXIBs = combine frameworkXIBs,
+    frameworkOtherResources = combine frameworkOtherResources,
+    frameworkBuildInfo  = combine frameworkBuildInfo
+  }
+    where combine field = field a `mappend` field b
+          combine' field = case (field a, field b) of
+                      ("","") -> ""
+                      ("", x) -> x
+                      (x, "") -> x
+                      (x, y) -> error $ "Ambiguous values for executable field: '"
+                                  ++ x ++ "' and '" ++ y ++ "'"
+
+emptyFramework :: Framework
+emptyFramework = mempty
+
+-- |does this package have any frameworks?
+hasFrameworks :: PackageDescription -> Bool
+hasFrameworks p = any (buildable . frameworkBuildInfo) (frameworks p)
+
+-- | Perform the action on each buildable 'Framework' in the package
+-- description.
+withFramework :: PackageDescription -> (Framework -> IO ()) -> IO ()
+withFramework pkg_descr f =
+  sequence_ [f framework | framework <- frameworks pkg_descr, buildable (frameworkBuildInfo framework)]
+
+-- | Get all the module names from an framework
+frameworkModules :: Framework -> [ModuleName]
+frameworkModules framework = otherModules (frameworkBuildInfo framework)
+
+-- ---------------------------------------------------------------------------
+-- The App type
+
+data App = App {
+        appName    :: String,
+        appModulePath :: FilePath,
+        appInfoPlist :: FilePath,
+        appResourceDirectory :: Maybe FilePath,
+        appXIBs :: [FilePath],
+        appOtherResources :: [FilePath],
+        appBuildInfo  :: BuildInfo
+    }
+    deriving (Show, Read, Eq)
+
+instance Monoid App where
+  mempty = App {
+    appName    = mempty,
+    appModulePath = mempty,
+    appInfoPlist = mempty,
+    appResourceDirectory = mempty,
+    appXIBs = mempty,
+    appOtherResources = mempty,
+    appBuildInfo  = mempty
+  }
+  mappend a b = App {
+    appName    = combine' appName,
+    appModulePath = combine appModulePath,
+    appInfoPlist = combine appInfoPlist,
+    appResourceDirectory = combine appResourceDirectory,
+    appXIBs = combine appXIBs,
+    appOtherResources = combine appOtherResources,
+    appBuildInfo  = combine appBuildInfo
+  }
+    where combine field = field a `mappend` field b
+          combine' field = case (field a, field b) of
+                      ("","") -> ""
+                      ("", x) -> x
+                      (x, "") -> x
+                      (x, y) -> error $ "Ambiguous values for executable field: '"
+                                  ++ x ++ "' and '" ++ y ++ "'"
+
+emptyApp :: App
+emptyApp = mempty
+
+-- |does this package have any apps?
+hasApps :: PackageDescription -> Bool
+hasApps p = any (buildable . appBuildInfo) (apps p)
+
+-- | Perform the action on each buildable 'App' in the package
+-- description.
+withApp :: PackageDescription -> (App -> IO ()) -> IO ()
+withApp pkg_descr f =
+  sequence_ [f app | app <- apps pkg_descr, buildable (appBuildInfo app)]
+
+-- | Get all the module names from an app
+appModules :: App -> [ModuleName]
+appModules app = otherModules (appBuildInfo app)
+
+-- ---------------------------------------------------------------------------
 -- The BuildInfo type
 
 -- Consider refactoring into executable and library versions.
@@ -747,6 +884,12 @@ allBuildInfo pkg_descr = [ bi | Just lib <- [library pkg_descr]
                               , let bi = benchmarkBuildInfo tst
                               , buildable bi
                               , benchmarkEnabled tst ]
+                      ++ [ bi | fw <- frameworks pkg_descr
+                              , let bi = frameworkBuildInfo app
+                              , buildable bi ]
+                      ++ [ bi | app <- apps pkg_descr
+                              , let bi = appBuildInfo app
+                              , buildable bi ]
   --FIXME: many of the places where this is used, we actually want to look at
   --       unbuildable bits too, probably need separate functions
 

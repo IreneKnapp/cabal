@@ -224,6 +224,8 @@ checkSanity pkg =
   ++ concatMap (checkExecutable pkg) (executables pkg)
   ++ concatMap (checkTestSuite  pkg) (testSuites pkg)
   ++ concatMap (checkBenchmark  pkg) (benchmarks pkg)
+  ++ concatMap (checkFramework  pkg) (frameworks pkg)
+  ++ concatMap (checkApp        pkg) (apps pkg)
 
   ++ catMaybes [
 
@@ -385,6 +387,40 @@ checkBenchmark pkg bm =
                                            | _lib <- maybeToList (library pkg)
                                            , let PackageName libName =
                                                    pkgName (package pkg) ]
+
+checkFramework :: Framework -> [PackageCheck]
+checkFramework framework =
+  catMaybes [
+  
+    check (not (null moduleDuplicates)) $
+       PackageBuildWarning $
+            "Duplicate modules in framework '" ++ frameworkName framework ++ "': "
+         ++ commaSep (map display moduleDuplicates)
+  ]
+  where
+    moduleDuplicates = dups (frameworkModules framework)
+
+checkApp :: App -> [PackageCheck]
+checkApp app =
+  catMaybes [
+  
+    check (null (appModulePath app)) $
+      PackageBuildImpossible $
+        "No 'Main-Is' field found for app " ++ appName app
+  
+  , check (not (null (appModulePath app))
+       && (not $pathIsKnownProgrammingLanguage $ appModulePath app)) $
+      PackageBuildImpossible $
+           "The 'main-is' field must specify a file with an extension of a "
+        ++ "known programming language."
+  
+  , check (not (null moduleDuplicates)) $
+       PackageBuildWarning $
+            "Duplicate modules in app '" ++ appName app ++ "': "
+         ++ commaSep (map display moduleDuplicates)
+  ]
+  where
+    moduleDuplicates = dups (appModules app)
 
 -- ------------------------------------------------------------
 -- * Additional pure checks

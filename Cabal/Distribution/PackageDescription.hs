@@ -205,8 +205,8 @@ data PackageDescription
         executables    :: [Executable],
         testSuites     :: [TestSuite],
         benchmarks     :: [Benchmark],
-        frameworks     :: [Framework],
-        apps           :: [App],
+        frameworksPD   :: [Framework],
+        appsPD         :: [App],
         dataFiles      :: [FilePath],
         dataDir        :: FilePath,
         extraSrcFiles  :: [FilePath],
@@ -271,8 +271,8 @@ emptyPackageDescription
                       executables  = [],
                       testSuites   = [],
                       benchmarks   = [],
-                      frameworks   = [],
-                      apps         = [],
+                      frameworksPD = [],
+                      appsPD       = [],
                       dataFiles    = [],
                       dataDir      = "",
                       extraSrcFiles = [],
@@ -660,7 +660,7 @@ data Framework = Framework {
         frameworkOtherResources :: [FilePath],
         frameworkBuildInfo  :: BuildInfo
     }
-    deriving (Show, Read, Eq)
+    deriving (Show, Eq, Read, Typeable, Data)
 
 instance Monoid Framework where
   mempty = Framework {
@@ -673,8 +673,8 @@ instance Monoid Framework where
     frameworkOtherResources = mempty,
     frameworkBuildInfo  = mempty
   }
-  mframeworkend a b = Framework {
-    frameworkExposedModules = combine exposedModules,
+  mappend a b = Framework {
+    frameworkExposedModules = combine frameworkExposedModules,
     frameworkName    = combine' frameworkName,
     frameworkModulePath = combine frameworkModulePath,
     frameworkInfoPlist = combine frameworkInfoPlist,
@@ -696,17 +696,18 @@ emptyFramework = mempty
 
 -- |does this package have any frameworks?
 hasFrameworks :: PackageDescription -> Bool
-hasFrameworks p = any (buildable . frameworkBuildInfo) (frameworks p)
+hasFrameworks p = any (buildable . frameworkBuildInfo) (frameworksPD p)
 
 -- | Perform the action on each buildable 'Framework' in the package
 -- description.
 withFramework :: PackageDescription -> (Framework -> IO ()) -> IO ()
 withFramework pkg_descr f =
-  sequence_ [f framework | framework <- frameworks pkg_descr, buildable (frameworkBuildInfo framework)]
+  sequence_ [f framework | framework <- frameworksPD pkg_descr, buildable (frameworkBuildInfo framework)]
 
 -- | Get all the module names from an framework
 frameworkModules :: Framework -> [ModuleName]
-frameworkModules framework = otherModules (frameworkBuildInfo framework)
+frameworkModules framework = frameworkExposedModules framework
+                             ++ otherModules (frameworkBuildInfo framework)
 
 -- ---------------------------------------------------------------------------
 -- The App type
@@ -720,7 +721,7 @@ data App = App {
         appOtherResources :: [FilePath],
         appBuildInfo  :: BuildInfo
     }
-    deriving (Show, Read, Eq)
+    deriving (Show, Eq, Read, Typeable, Data)
 
 instance Monoid App where
   mempty = App {
@@ -754,13 +755,13 @@ emptyApp = mempty
 
 -- |does this package have any apps?
 hasApps :: PackageDescription -> Bool
-hasApps p = any (buildable . appBuildInfo) (apps p)
+hasApps p = any (buildable . appBuildInfo) (appsPD p)
 
 -- | Perform the action on each buildable 'App' in the package
 -- description.
 withApp :: PackageDescription -> (App -> IO ()) -> IO ()
 withApp pkg_descr f =
-  sequence_ [f app | app <- apps pkg_descr, buildable (appBuildInfo app)]
+  sequence_ [f app | app <- appsPD pkg_descr, buildable (appBuildInfo app)]
 
 -- | Get all the module names from an app
 appModules :: App -> [ModuleName]
@@ -884,10 +885,10 @@ allBuildInfo pkg_descr = [ bi | Just lib <- [library pkg_descr]
                               , let bi = benchmarkBuildInfo tst
                               , buildable bi
                               , benchmarkEnabled tst ]
-                      ++ [ bi | fw <- frameworks pkg_descr
-                              , let bi = frameworkBuildInfo app
+                      ++ [ bi | fw <- frameworksPD pkg_descr
+                              , let bi = frameworkBuildInfo fw
                               , buildable bi ]
-                      ++ [ bi | app <- apps pkg_descr
+                      ++ [ bi | app <- appsPD pkg_descr
                               , let bi = appBuildInfo app
                               , buildable bi ]
   --FIXME: many of the places where this is used, we actually want to look at
@@ -1087,7 +1088,9 @@ data GenericPackageDescription =
         condLibrary        :: Maybe (CondTree ConfVar [Dependency] Library),
         condExecutables    :: [(String, CondTree ConfVar [Dependency] Executable)],
         condTestSuites     :: [(String, CondTree ConfVar [Dependency] TestSuite)],
-        condBenchmarks     :: [(String, CondTree ConfVar [Dependency] Benchmark)]
+        condBenchmarks     :: [(String, CondTree ConfVar [Dependency] Benchmark)],
+        condFrameworks     :: [(String, CondTree ConfVar [Dependency] Framework)],
+        condApps           :: [(String, CondTree ConfVar [Dependency] App)]
       }
     deriving (Show, Eq, Typeable, Data)
 

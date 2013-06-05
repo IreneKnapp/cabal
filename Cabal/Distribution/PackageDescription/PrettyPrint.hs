@@ -53,6 +53,7 @@ import Distribution.PackageDescription
        , SourceRepo(..),
         customFieldsBI, CondTree(..), Condition(..),
         FlagName(..), ConfVar(..), Executable(..), Library(..),
+        Framework(..), App(..),
         Flag(..), PackageDescription(..),
         GenericPackageDescription(..))
 import Text.PrettyPrint
@@ -89,6 +90,8 @@ ppGenericPackageDescription gpd          =
         $+$ ppExecutables (condExecutables gpd)
         $+$ ppTestSuites (condTestSuites gpd)
         $+$ ppBenchmarks (condBenchmarks gpd)
+        $+$ ppFrameworks (condFrameworks gpd)
+        $+$ ppApps (condApps gpd)
 
 ppPackageDescription :: PackageDescription -> Doc
 ppPackageDescription pd                  =      ppFields pkgDescrFieldDescrs pd
@@ -222,6 +225,107 @@ ppBenchmarks suites =
     benchmarkMainIs benchmark = case benchmarkInterface benchmark of
       BenchmarkExeV10 _ f -> Just f
       _                   -> Nothing
+
+ppFrameworks :: [(String, CondTree ConfVar [Dependency] Framework)] -> Doc
+ppFrameworks fws                       =
+    vcat [emptyLine $ text ("framework " ++ n)
+              $+$ nest indentWith (ppCondTree condTree Nothing ppFramework)| (n,condTree) <- fws]
+  where
+    ppFramework framework Nothing =
+        (if frameworkInfoPlist framework == ""
+           then empty
+           else text "info-plist:" <+> (text $ frameworkInfoPlist framework))
+        $+$
+        (case frameworkResourceDirectory framework of
+           Nothing -> empty
+           Just dir -> text "resource-directory:" <+> (text dir))
+        $+$
+        (if frameworkXIBs framework == []
+           then empty
+           else text "xibs:" <+> fsep (punctuate comma (map text $ frameworkXIBs framework)))
+        $+$
+        (if frameworkOtherResources framework == []
+           then empty
+           else text "other-resources:" <+> fsep (punctuate comma (map text $ frameworkOtherResources framework)))
+        $+$ (ppFields binfoFieldDescrs $ frameworkBuildInfo framework)
+        $+$ (ppCustomFields $ customFieldsBI $ frameworkBuildInfo framework)
+    ppFramework framework (Just framework2) =
+        (if frameworkInfoPlist framework == ""
+            || frameworkInfoPlist framework == frameworkInfoPlist framework2
+           then empty
+           else text "info-plist:" <+> (text $ frameworkInfoPlist framework))
+        $+$
+        (case frameworkResourceDirectory framework of
+          Nothing -> empty
+          Just dir | Just dir == frameworkResourceDirectory framework2 -> empty
+                   | otherwise -> text "resource-directory:" <+> (text dir))
+        $+$
+        (if frameworkXIBs framework == []
+            || frameworkXIBs framework == frameworkXIBs framework2
+           then empty
+           else text "xibs:" <+> fsep (punctuate comma (map text $ frameworkXIBs framework)))
+        $+$
+        (if frameworkOtherResources framework == []
+            || frameworkOtherResources framework == frameworkOtherResources framework2
+           then empty
+           else text "other-resources:" <+> fsep (punctuate comma (map text $ frameworkOtherResources framework)))
+        $+$ ppDiffFields binfoFieldDescrs (frameworkBuildInfo framework) (frameworkBuildInfo framework2)
+        $+$ ppCustomFields (customFieldsBI $ frameworkBuildInfo framework)
+
+ppApps :: [(String, CondTree ConfVar [Dependency] App)] -> Doc
+ppApps apps                       =
+    vcat [emptyLine $ text ("app " ++ n)
+              $+$ nest indentWith (ppCondTree condTree Nothing ppApp)| (n,condTree) <- apps]
+  where
+    ppApp app Nothing =
+        (if appModulePath app == ""
+           then empty
+           else text "main-is:" <+> (text $ appModulePath app))
+        $+$
+        (if appInfoPlist app == ""
+           then empty
+           else text "info-plist:" <+> (text $ appInfoPlist app))
+        $+$
+        (case appResourceDirectory app of
+           Nothing -> empty
+           Just dir -> text "resource-directory:" <+> (text dir))
+        $+$
+        (if appXIBs app == []
+           then empty
+           else text "xibs:" <+> fsep (punctuate comma (map text $ appXIBs app)))
+        $+$
+        (if appOtherResources app == []
+           then empty
+           else text "other-resources:" <+> fsep (punctuate comma (map text $ appOtherResources app)))
+        $+$ (ppFields binfoFieldDescrs $ appBuildInfo app)
+        $+$ (ppCustomFields $ customFieldsBI $ appBuildInfo app)
+    ppApp app (Just app2) =
+        (if appModulePath app == ""
+            || appModulePath app == appModulePath app2
+           then empty
+           else text "main-is:" <+> (text $ appModulePath app))
+        $+$
+        (if appInfoPlist app == ""
+            || appInfoPlist app == appInfoPlist app2
+           then empty
+           else text "info-plist:" <+> (text $ appInfoPlist app))
+        $+$
+        (case appResourceDirectory app of
+          Nothing -> empty
+          Just dir | Just dir == appResourceDirectory app2 -> empty
+                   | otherwise -> text "resource-directory:" <+> (text dir))
+        $+$
+        (if appXIBs app == []
+            || appXIBs app == appXIBs app2
+           then empty
+           else text "xibs:" <+> fsep (punctuate comma (map text $ appXIBs app)))
+        $+$
+        (if appOtherResources app == []
+            || appOtherResources app == appOtherResources app2
+           then empty
+           else text "other-resources:" <+> fsep (punctuate comma (map text $ appOtherResources app)))
+        $+$ ppDiffFields binfoFieldDescrs (appBuildInfo app) (appBuildInfo app2)
+        $+$ ppCustomFields (customFieldsBI $ appBuildInfo app)
 
 ppCondition :: Condition ConfVar -> Doc
 ppCondition (Var x)                      = ppConfVar x

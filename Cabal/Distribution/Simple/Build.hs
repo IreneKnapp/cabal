@@ -70,7 +70,7 @@ import Distribution.Simple.Compiler
 import Distribution.PackageDescription
          ( PackageDescription(..), BuildInfo(..), Library(..), Executable(..)
          , TestSuite(..), TestSuiteInterface(..), Benchmark(..)
-         , BenchmarkInterface(..) )
+         , BenchmarkInterface(..), Framework(..), App(..) )
 import qualified Distribution.InstalledPackageInfo as IPI
 import qualified Distribution.ModuleName as ModuleName
 import Distribution.ModuleName (ModuleName)
@@ -290,6 +290,48 @@ buildComponent _ _ _ _
                (CBench Benchmark { benchmarkInterface = BenchmarkUnsupported tt })
                _ _ =
     die $ "No support for building benchmark type " ++ display tt
+
+
+buildComponent :: Verbosity
+               -> PackageDescription
+               -> LocalBuildInfo
+               -> [PPSuffixHandler]
+               -> Component
+               -> ComponentLocalBuildInfo
+               -> FilePath
+               -> IO ()
+buildComponent verbosity pkg_descr lbi suffixes
+               comp@(CFramework framework) clbi distPref = do
+    preprocessComponent pkg_descr comp lbi False verbosity suffixes
+    info verbosity "Building framework " ++ frameworkName framework ++ "..."
+    buildLib verbosity pkg_descr lbi lib clbi
+
+    -- IAK Actually create the bundle!
+
+    -- Register the library in-place, so exes can depend
+    -- on internally defined libraries.
+    pwd <- getCurrentDirectory
+    let installedPkgInfo =
+          (inplaceInstalledPackageInfo pwd distPref pkg_descr lib lbi clbi) {
+            -- The inplace registration uses the "-inplace" suffix,
+            -- not an ABI hash.
+            IPI.installedPackageId = inplacePackageId (packageId installedPkgInfo)
+          }
+    registerPackage verbosity
+      installedPkgInfo pkg_descr lbi True -- True meaning inplace
+      (withPackageDB lbi)
+
+    -- IAK It's going to be necessary to include both the .hi files and the
+    -- package-info file in the .framework.
+
+
+buildComponent verbosity pkg_descr lbi suffixes
+               comp@(CApp app) clbi _ = do
+    preprocessComponent pkg_descr comp lbi False verbosity suffixes
+    info verbosity $ "Building app " ++ appName app ++ "..."
+    buildApp verbosity pkg_descr lbi exe clbi
+
+    -- IAK Actually create the bundle!
 
 
 -- | Initialize a new package db file for libraries defined

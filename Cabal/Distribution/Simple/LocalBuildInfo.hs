@@ -76,6 +76,8 @@ module Distribution.Simple.LocalBuildInfo (
         withLibLBI,
         withExeLBI,
         withTestLBI,
+        withFrameworkLBI,
+        withAppLBI,
 
         -- * Installation directories
         module Distribution.Simple.InstallDirs,
@@ -92,7 +94,7 @@ import Distribution.Simple.Program (ProgramConfiguration)
 import Distribution.PackageDescription
          ( PackageDescription(..), withLib, Library(libBuildInfo), withExe
          , Executable(exeName, buildInfo), withTest, TestSuite(..)
-         , BuildInfo(buildable), Benchmark(..) )
+         , BuildInfo(buildable), Benchmark(..), Framework(..), App(..) )
 import Distribution.Package
          ( PackageId, Package(..), InstalledPackageId(..) )
 import Distribution.Simple.Compiler
@@ -182,16 +184,20 @@ inplacePackageId pkgid = InstalledPackageId (display pkgid ++ "-inplace")
 -- -----------------------------------------------------------------------------
 -- Buildable components
 
-data Component = CLib   Library
-               | CExe   Executable
-               | CTest  TestSuite
-               | CBench Benchmark
+data Component = CLib       Library
+               | CExe       Executable
+               | CTest      TestSuite
+               | CBench     Benchmark
+               | CFramework Framework
+               | CApp       App
                deriving (Show, Eq, Read)
 
 data ComponentName = CLibName   -- currently only a single lib
-                   | CExeName   String
-                   | CTestName  String
-                   | CBenchName String
+                   | CExeName       String
+                   | CTestName      String
+                   | CBenchName     String
+                   | CFrameworkName String
+                   | CAppName       String
                    deriving (Show, Eq, Ord, Read)
 
 showComponentName :: ComponentName -> String
@@ -199,6 +205,8 @@ showComponentName CLibName          = "library"
 showComponentName (CExeName   name) = "executable '" ++ name ++ "'"
 showComponentName (CTestName  name) = "test suite '" ++ name ++ "'"
 showComponentName (CBenchName name) = "benchmark '" ++ name ++ "'"
+showComponentName (CFrameworkName name) = "framework '" ++ name ++ "'"
+showComponentName (CAppName   name) = "app '" ++ name ++ "'"
 
 data ComponentLocalBuildInfo
   = LibComponentLocalBuildInfo {
@@ -218,18 +226,29 @@ data ComponentLocalBuildInfo
   | BenchComponentLocalBuildInfo {
     componentPackageDeps :: [(InstalledPackageId, PackageId)]
   }
+  | FrameworkComponentLocalBuildInfo {
+    componentPackageDeps :: [(InstalledPackageId, PackageId)],
+    componentLibraries :: [LibraryName]
+  }
+  | AppComponentLocalBuildInfo {
+    componentPackageDeps :: [(InstalledPackageId, PackageId)]
+  }
   deriving (Read, Show)
 
 foldComponent :: (Library -> a)
               -> (Executable -> a)
               -> (TestSuite -> a)
               -> (Benchmark -> a)
+              -> (Framework -> a)
+              -> (App -> a)
               -> Component
               -> a
-foldComponent f _ _ _ (CLib   lib) = f lib
-foldComponent _ f _ _ (CExe   exe) = f exe
-foldComponent _ _ f _ (CTest  tst) = f tst
-foldComponent _ _ _ f (CBench bch) = f bch
+foldComponent f _ _ _ _ _ (CLib       lib) = f lib
+foldComponent _ f _ _ _ _ (CExe       exe) = f exe
+foldComponent _ _ f _ _ _ (CTest      tst) = f tst
+foldComponent _ _ _ f _ _ (CBench     bch) = f bch
+foldComponent _ _ _ _ f _ (CFramework  fw) = f fw
+foldComponent _ _ _ _ _ f (CApp       app) = f app
 
 data LibraryName = LibraryName String
     deriving (Read, Show)
@@ -237,6 +256,7 @@ data LibraryName = LibraryName String
 componentBuildInfo :: Component -> BuildInfo
 componentBuildInfo =
   foldComponent libBuildInfo buildInfo testBuildInfo benchmarkBuildInfo
+                frameworkBuildInfo appBuildInfo
 
 componentName :: Component -> ComponentName
 componentName =
@@ -244,15 +264,19 @@ componentName =
                 (CExeName . exeName)
                 (CTestName . testName)
                 (CBenchName . benchmarkName)
+                (CFrameworkName . frameworkName)
+                (CAppName . appName)
 
 -- | All the components in the package (libs, exes, or test suites).
 --
 pkgComponents :: PackageDescription -> [Component]
 pkgComponents pkg =
-    [ CLib  lib | Just lib <- [library pkg] ]
- ++ [ CExe  exe | exe <- executables pkg ]
- ++ [ CTest tst | tst <- testSuites  pkg ]
- ++ [ CBench bm | bm  <- benchmarks  pkg ]
+    [ CLib      lib | Just lib <- [library pkg] ]
+ ++ [ CExe      exe | exe <- executables pkg ]
+ ++ [ CTest     tst | tst <- testSuites  pkg ]
+ ++ [ CBench     bm | bm  <- benchmarks  pkg ]
+ ++ [ CFramework fw | fw  <- frameworks  pkg ]
+ ++ [ CApp      app | app <- apps        pkg ]
 
 -- | All the components in the package that are buildable and enabled.
 -- Thus this excludes non-buildable components and test suites or benchmarks
@@ -290,6 +314,10 @@ lookupComponent pkg (CTestName name) =
     fmap CTest $ find ((name ==) . testName) (testSuites pkg)
 lookupComponent pkg (CBenchName name) =
     fmap CBench $ find ((name ==) . benchmarkName) (benchmarks pkg)
+lookupComponent pkg (CFrameworkName name) =
+    fmap CFramework $ find ((name ==) . frameworkName) (frameworks pkg)
+lookupComponent pkg (CAppName name) =
+    fmap CApp $ find ((name ==) . appName) (apps pkg)
 
 getComponent :: PackageDescription -> ComponentName -> Component
 getComponent pkg cname =
@@ -338,6 +366,18 @@ withTestLBI :: PackageDescription -> LocalBuildInfo
 withTestLBI pkg_descr lbi f =
     withTest pkg_descr $ \test ->
       f test (getComponentLocalBuildInfo lbi (CTestName (testName test)))
+
+withFrameworkLBI :: PackageDescription -> LocalBuildInfo
+                 -> (Framework -> ComponentLocalBuildInfo -> IO ()) -> IO ()
+withFrameworkLBI pkg_descr lbi f =
+    withFramework pkg_desc $ \fw ->
+      f fw (getComponentLocalBuildInfo lbi (CFrameworkName (frameworkName fw))) 
+
+withAppLBI :: PackageDescription -> LocalBuildInfo
+           -> (Framework -> ComponentLocalBuildInfo -> IO ()) -> IO ()
+withAppLBI pkg_descr lbi f =
+    withApp pkg_desc $ \app ->
+      f app (getComponentLocalBuildInfo lbi (CAppName (appName app)))
 
 {-# DEPRECATED withComponentsLBI "Use withAllComponentsInBuildOrder" #-}
 withComponentsLBI :: PackageDescription -> LocalBuildInfo

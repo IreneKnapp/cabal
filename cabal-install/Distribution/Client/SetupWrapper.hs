@@ -99,6 +99,8 @@ data SetupScriptOptions = SetupScriptOptions {
     useLoggingHandle         :: Maybe Handle,
     useWorkingDir            :: Maybe FilePath,
     forceExternalSetupMethod :: Bool,
+    extraIncludeDirs         :: [FilePath],
+    extraLibDirs             :: [FilePath],
 
     -- Used only when calling setupWrapper from parallel code to serialise
     -- access to the setup cache; should be Nothing otherwise.
@@ -127,6 +129,8 @@ defaultSetupScriptOptions = SetupScriptOptions {
     useLoggingHandle         = Nothing,
     useWorkingDir            = Nothing,
     forceExternalSetupMethod = False,
+    extraIncludeDirs         = [],
+    extraLibDirs             = [],
     setupCacheLock           = Nothing
   }
 
@@ -404,6 +408,8 @@ externalSetupMethod verbosity options pkg bt mkargs = do
       let ghcOptions = mempty {
               ghcOptVerbosity       = Flag verbosity
             , ghcOptMode            = Flag GhcModeMake
+            , ghcOptCppIncludePath  = extraIncludeDirs options''
+            , ghcOptLinkLibPath     = extraLibDirs options''
             , ghcOptInputFiles      = [setupHsFile]
             , ghcOptOutputFile      = Flag setupProgFile
             , ghcOptObjDir          = Flag setupDir

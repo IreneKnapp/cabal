@@ -108,6 +108,8 @@ configure verbosity packageDBs repos comp platform conf
       useLoggingHandle = Nothing,
       useWorkingDir    = Nothing,
       forceExternalSetupMethod = False,
+      extraIncludeDirs = configExtraIncludeDirs configFlags,
+      extraLibDirs     = configExtraLibDirs configFlags,
       setupCacheLock   = Nothing
     }
       where

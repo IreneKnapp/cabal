@@ -905,6 +905,8 @@ performInstallations verbosity
       useLoggingHandle = Nothing,
       useWorkingDir    = Nothing,
       forceExternalSetupMethod = parallelBuild,
+      extraIncludeDirs = configExtraIncludeDirs configFlags,
+      extraLibDirs     = configExtraLibDirs configFlags,
       setupCacheLock   = Just lock
     }
     reportingLevel = fromFlag (installBuildReports installFlags)
